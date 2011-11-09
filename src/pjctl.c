@@ -526,51 +526,30 @@ class_response(struct pjctl *pjctl, char *cmd, char *param)
 static int
 status(struct pjctl *pjctl, char **argv, int argc)
 {
-	struct queue_command cmd;
-
-	cmd.command = g_strdup("%1NAME ?\r");
-	cmd.response_func = name_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1INF1 ?\r");
-	cmd.response_func = manufactor_name_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1INF2 ?\r");
-	cmd.response_func = product_name_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1INFO ?\r");
-	cmd.response_func = info_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1POWR ?\r");
-	cmd.response_func = power_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1INPT ?\r");
-	cmd.response_func = input_switch_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1INST ?\r");
-	cmd.response_func = input_list_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1AVMT ?\r");
-	cmd.response_func = avmute_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1LAMP ?\r");
-	cmd.response_func = lamp_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1ERST ?\r");
-	cmd.response_func = error_status_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
-
-	cmd.command = g_strdup("%1CLSS ?\r");
-	cmd.response_func = class_response;
-	pjctl->queue = g_list_append(pjctl->queue, g_memdup(&cmd, sizeof cmd));
+	/* Note: incomplete commands stored here */
+	static const struct queue_command cmds[] = {
+		{ "NAME", name_response },
+		{ "INF1", manufactor_name_response },
+		{ "INF2", product_name_response },
+		{ "INFO", info_response },
+		{ "POWR", power_response },
+		{ "INPT", input_switch_response },
+		{ "INST", input_list_response },
+		{ "AVMT", avmute_response },
+		{ "LAMP", lamp_response },
+		{ "ERST", error_status_response },
+		{ "CLSS", class_response }
+	};
+	struct queue_command *cmd;
+	int i;
+	
+	for (i = 0; i < G_N_ELEMENTS(cmds); ++i) {
+		cmd = g_memdup(&cmds[i], sizeof *cmd);
+		if (!cmd)
+			return -1;
+		cmd->command = g_strdup_printf("%%1%s ?\r", cmd->command);
+		pjctl->queue = g_list_append(pjctl->queue, cmd);
+	}
 
 	return 0;
 }
