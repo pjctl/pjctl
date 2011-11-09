@@ -46,7 +46,6 @@ struct pjctl {
 	GSocketConnection *con;
 	GPollableInputStream *in;
 	GOutputStream *out;
-	GSource *insrc;
 };
 
 struct queue_command {
@@ -605,6 +604,8 @@ main(int argc, char **argv)
 	int port = 4352;
 	GError *error = NULL;
 	int i;
+	GSource *src;
+	guint src_id;
 
 	memset(&pjctl, 0, sizeof pjctl);
 
@@ -653,14 +654,20 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	pjctl.insrc = g_pollable_input_stream_create_source(pjctl.in, NULL);
-	g_source_set_callback(pjctl.insrc, (GSourceFunc) read_cb, &pjctl, NULL);
-	g_source_attach(pjctl.insrc, NULL);
-	g_source_unref(pjctl.insrc);
+	src = g_pollable_input_stream_create_source(pjctl.in, NULL);
+	g_source_set_callback(src, (GSourceFunc) read_cb, &pjctl, NULL);
+	src_id = g_source_attach(src, NULL);
+	g_source_unref(src);
 
 	pjctl.state = PJCTL_AWAIT_INITIAL;
 
 	g_main_loop_run(pjctl.loop);
+
+	g_source_remove(src_id);
+	g_object_unref(pjctl.in);
+	g_object_unref(pjctl.out);
+	g_object_unref(pjctl.con);
+	g_object_unref(pjctl.sc);
 	g_main_loop_unref(pjctl.loop);
 
 	return 0;
