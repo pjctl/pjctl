@@ -303,13 +303,7 @@ source(struct pjctl *pjctl, char **argv, int argc)
 	int type = 0, offset;
 	int num;
 	int i;
-	const char *switches[] = {
-		"rgb",
-		"video",
-		"digital",
-		"usb",
-		"net"
-	};
+	const char *switches[] = { "rgb", "video", "digital", "usb", "net" };
 
 	cmd = calloc(1, sizeof *cmd);
 	if (!cmd)
@@ -370,11 +364,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 	int type = -1;
 	int i;
 	int on;
-	const char *targets[] = {
-		"video",
-		"audio",
-		"av"
-	};
+	const char *targets[] = { "video", "audio", "av" };
 
 	cmd = calloc(1, sizeof *cmd);
 	if (!cmd)
