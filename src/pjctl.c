@@ -113,7 +113,7 @@ send_next_cmd(struct pjctl *pjctl)
 	}
 
 	pjctl->state = PJCTL_AWAIT_RESPONSE;
-	
+
 	return 0;
 }
 
@@ -387,7 +387,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 		g_printerr("incorrect source type given\n");
 		return -1;
 	}
-		
+
 	if (strcmp(argv[2], "on") == 0)
 		on = 1;
 	else if (strcmp(argv[2], "off") == 0)
@@ -473,7 +473,7 @@ input_switch_response(struct pjctl *pjctl, char *cmd, char *param)
 
 	if (strlen(param) == 2)
 		g_print("%s%c\n",
-		       map_input_name(param[0]), param[1]);
+			map_input_name(param[0]), param[1]);
 	else
 		g_print("error: invalid response\n");
 }
@@ -532,7 +532,7 @@ status(struct pjctl *pjctl, char **argv, int argc)
 	};
 	struct queue_command *cmd;
 	int i;
-	
+
 	for (i = 0; i < G_N_ELEMENTS(cmds); ++i) {
 		cmd = g_memdup(&cmds[i], sizeof *cmd);
 		if (!cmd)
@@ -585,14 +585,14 @@ main(int argc, char **argv)
 		usage(&pjctl);
 		return 1;
 	}
-	
+
 	for (i = 0; i < G_N_ELEMENTS(commands); ++i) {
 		if (strcmp(argv[2], commands[i].name) == 0) {
 			if (commands[i].func(&pjctl, &argv[2], argc-2) < 0)
 				return 1;
 		}
 	}
-	
+
 	/* Nothing got into queue? User gave invalid command. */
 	if (g_list_length(pjctl.queue) == 0) {
 		g_printerr("error: invalid command\n");
