@@ -1,0 +1,8 @@
+bin_PROGRAMS = pjctl
+
+pjctl_SOURCES = pjctl.c
+
+pjctl_LDADD = $(GLIB_LIBS) $(GIO_LIBS)
+AM_CPPFLAGS = $(GLIB_CFLAGS) $(GIO_CFLAGS)
+
+AM_CFLAGS = $(GCC_CFLAGS)
