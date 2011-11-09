@@ -556,11 +556,12 @@ static struct pjctl_command {
 };
 
 static void
-print_commands(struct pjctl *pjctl)
+usage(struct pjctl *pjctl)
 {
 	int i;
 
-	g_print("Commands:\n");
+	g_print("usage: pjctl <hostname> command [args..]\n\n");
+	g_print("commands:\n");
 	for (i = 0; i < G_N_ELEMENTS(commands); ++i)
 		g_print("  %s %s\n", commands[i].name, commands[i].help);
 }
@@ -581,7 +582,7 @@ main(int argc, char **argv)
 	g_type_init();
 
 	if (argc <= 2) {
-		print_commands(&pjctl);
+		usage(&pjctl);
 		return 1;
 	}
 	
@@ -595,7 +596,7 @@ main(int argc, char **argv)
 	/* Nothing got into queue? User gave invalid command. */
 	if (g_list_length(pjctl.queue) == 0) {
 		g_printerr("error: invalid command\n");
-		print_commands(&pjctl);
+		usage(&pjctl);
 		return 1;
 	}
 
