@@ -248,40 +248,6 @@ read_cb(GObject *pollable_stream, gpointer userdata)
 }
 
 static void
-connection_ready(GObject *source_object, GAsyncResult *res, gpointer user_data)
-{
-	struct pjctl *pjctl = user_data;
-	GError *error = NULL;
-
-	pjctl->con = g_socket_client_connect_to_host_finish(pjctl->sc, res,
-							    &error);
-	if (error) {
-		g_printerr("failed to connect: %s\n", error->message);
-		g_main_loop_quit(pjctl->loop);
-		return;
-	}
-
-	g_object_get(G_OBJECT(pjctl->con),
-		     "input-stream", &pjctl->in,
-		     "output-stream", &pjctl->out, NULL);
-
-	if (!G_IS_POLLABLE_INPUT_STREAM(pjctl->in) ||
-	    !g_pollable_input_stream_can_poll(pjctl->in)) {
-		g_printerr("Error: GSocketConnection is not pollable\n");
-		g_main_loop_quit(pjctl->loop);
-		return;
-	}
-
-	pjctl->insrc = g_pollable_input_stream_create_source(pjctl->in, NULL);
-	g_source_set_callback(pjctl->insrc, (GSourceFunc) read_cb, pjctl, NULL);
-	g_source_attach(pjctl->insrc, NULL);
-	g_source_unref(pjctl->insrc);
-
-
-	pjctl->state = PJCTL_AWAIT_INITIAL;
-}
-
-static void
 power_response(struct pjctl *pjctl, char *cmd, char *param)
 {
 	int ret = handle_pjlink_error(param);
@@ -637,6 +603,7 @@ main(int argc, char **argv)
 	struct pjctl pjctl;
 	char *host = argv[1];
 	int port = 4352;
+	GError *error = NULL;
 	int i;
 
 	memset(&pjctl, 0, sizeof pjctl);
@@ -669,8 +636,28 @@ main(int argc, char **argv)
 	g_socket_client_set_protocol(pjctl.sc, G_SOCKET_PROTOCOL_TCP);
 	g_socket_client_set_socket_type(pjctl.sc, G_SOCKET_TYPE_STREAM);
 
-	g_socket_client_connect_to_host_async(pjctl.sc, host, port, NULL,
-					      connection_ready, &pjctl);
+	pjctl.con = g_socket_client_connect_to_host(pjctl.sc, host, port,
+						    NULL, &error);
+	if (error) {
+		g_printerr("failed to connect: %s\n", error->message);
+		return 1;
+	}
+
+	g_object_get(G_OBJECT(pjctl.con),
+		     "input-stream", &pjctl.in,
+		     "output-stream", &pjctl.out, NULL);
+
+	if (!G_IS_POLLABLE_INPUT_STREAM(pjctl.in) ||
+	    !g_pollable_input_stream_can_poll(pjctl.in)) {
+		g_printerr("Error: GSocketConnection is not pollable\n");
+		return 1;
+	}
+
+	pjctl.insrc = g_pollable_input_stream_create_source(pjctl.in, NULL);
+	g_source_set_callback(pjctl.insrc, (GSourceFunc) read_cb, &pjctl, NULL);
+	g_source_attach(pjctl.insrc, NULL);
+	g_source_unref(pjctl.insrc);
+
 	pjctl.state = PJCTL_AWAIT_INITIAL;
 
 	g_main_loop_run(pjctl.loop);
