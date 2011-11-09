@@ -199,58 +199,50 @@ quit:
 	return -1;
 }
 
-static int
-recv(struct pjctl *pjctl)
+static gboolean
+read_cb(GObject *pollable_stream, gpointer userdata)
 {
+	struct pjctl *pjctl = userdata;
 	gssize ret;
 	char data[136];
 	char *end;
 	GError *error = NULL;
 
-	ret = g_pollable_input_stream_read_nonblocking(pjctl->in,
-						       data, sizeof (data),
-						       NULL, &error);
+	do {
+		ret = g_pollable_input_stream_read_nonblocking(pjctl->in,
+							       data,
+							       sizeof data,
+							       NULL, &error);
 
-	if (ret <= 0) {
-		if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_WOULD_BLOCK))
-			return 0;
+		if (ret <= 0) {
+			if (g_error_matches(error, G_IO_ERROR,
+					    G_IO_ERROR_WOULD_BLOCK))
+				break;
 
 
-		if (ret == 0 && error == NULL) {
+			if (ret == 0 && error == NULL) {
+				g_main_loop_quit(pjctl->loop);
+				break;
+			}
+
+			g_printerr("read failed: %ld: %d %s\n", ret,
+				   error ? error->code : -1,
+				   error ? error->message: "unknown");
+
+			break;
+		}
+
+		end = memchr(data, 0x0d, ret);
+		if (end == NULL) {
+			g_printerr("invalid pjlink msg received\n");
 			g_main_loop_quit(pjctl->loop);
 			return 0;
 		}
 
-		g_printerr("read failed: %ld: %d %s\n", ret,
-			   error ? error->code : -1,
-			   error ? error->message: "unknown");
-
-		return 0;
-	}
-
-	end = memchr(data, 0x0d, ret);
-	if (end == NULL) {
-		g_printerr("invalid pjlink msg received\n");
-		g_main_loop_quit(pjctl->loop);
-		return 0;
-	}
-
-	*end = '\0';
-	handle_data(pjctl, data, (ptrdiff_t) (end-data));
-
-	return 1;
-}
-
-static gboolean
-read_cb(GObject *pollable_stream, gpointer data)
-{
-	struct pjctl *pjctl = data;
-	GPollableInputStream *input = G_POLLABLE_INPUT_STREAM(pollable_stream);
-	gint count;
-
-	do {
-		count = recv(pjctl);
-	} while (count && g_pollable_input_stream_is_readable(input));
+		*end = '\0';
+		if (handle_data(pjctl, data, (ptrdiff_t) (end - data)) < 0)
+			break;
+	} while (g_pollable_input_stream_is_readable(pjctl->in));
 
 	return TRUE;
 }
@@ -258,8 +250,8 @@ read_cb(GObject *pollable_stream, gpointer data)
 static void
 connection_ready(GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
-	GError *error = NULL;
 	struct pjctl *pjctl = user_data;
+	GError *error = NULL;
 
 	pjctl->con = g_socket_client_connect_to_host_finish(pjctl->sc, res,
 							    &error);
