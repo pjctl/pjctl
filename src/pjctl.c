@@ -303,12 +303,12 @@ source(struct pjctl *pjctl, char **argv, int argc)
 	int type = 0, offset;
 	int num;
 	int i;
-	char *switches[] = {
+	const char *switches[] = {
 		"rgb",
 		"video",
 		"digital",
-		"storage",
-		"network"
+		"usb",
+		"net"
 	};
 
 	cmd = calloc(1, sizeof *cmd);
@@ -560,7 +560,7 @@ static struct pjctl_command {
 	char *help;
 } commands[] = {
 	{ "power", power, "<on|off>" },
-	{ "source", source, "<rgb|video|digital|storage|network>[1-9]" },
+	{ "source", source, "<rgb|video|digital|usb|net>[1-9]" },
 	{ "mute", avmute, "<video|audio|av> <on|off>" },
 	{ "status", status, ""},
 };
