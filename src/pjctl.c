@@ -45,17 +45,34 @@ enum pjctl_state {
 	PJCTL_FINISH
 };
 
-struct pjctl {
-	enum pjctl_state state;
-	GList *queue;
-
-	int fd;
-};
+struct pjctl;
 
 struct queue_command {
 	char *command;
 	void (*response_func)(struct pjctl *pjctl, char *cmd, char *param);
+	struct queue_command *prev, *next;
 };
+
+struct pjctl {
+	enum pjctl_state state;
+	struct queue_command queue;
+	int fd;
+};
+
+#define remove_from_list(elem) \
+	do {						\
+		(elem)->next->prev = (elem)->prev;	\
+		(elem)->prev->next = (elem)->next;	\
+	} while (0)
+
+#define insert_at_head(list, elem)			\
+	do {						\
+		(elem)->prev = list;			\
+		(elem)->next = (list)->next;		\
+		(list)->next->prev = elem;		\
+		(list)->next = elem;			\
+	} while(0)
+
 
 /* return value: -1 = error, 1 = ok, 0 = unknown */
 static int
@@ -99,12 +116,12 @@ send_next_cmd(struct pjctl *pjctl)
 	struct queue_command *cmd;
 
 	/* Are we're ready? */
-	if (g_list_length(pjctl->queue) == 0) {
+	if (pjctl->queue.next == &pjctl->queue) {
 		pjctl->state = PJCTL_FINISH;
 		return 0;
 	}
 
-	cmd = g_list_nth_data(pjctl->queue, 0);
+	cmd = pjctl->queue.prev;
 
 	ret = send(pjctl->fd, cmd->command, strlen(cmd->command), 0);
 
@@ -170,9 +187,9 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 	}
 	data[PJLINK_SEPERATOR] = '\0';
 
-	cmd = g_list_nth_data(pjctl->queue, 0);
+	cmd = pjctl->queue.prev;
 
-	pjctl->queue = g_list_remove(pjctl->queue, cmd);
+	remove_from_list(cmd);
 
 	cmd->response_func(pjctl, &data[PJLINK_COMMAND],
 			   &data[PJLINK_PARAMETER]);
@@ -248,7 +265,7 @@ power(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 	cmd->response_func = power_response;
 
-	pjctl->queue = g_list_append(pjctl->queue, cmd);
+	insert_at_head(&pjctl->queue, cmd);
 
 	printf("power %s: ", argv[1]);
 
@@ -303,7 +320,7 @@ source(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 	cmd->response_func = source_response;
 
-	pjctl->queue = g_list_append(pjctl->queue, cmd);
+	insert_at_head(&pjctl->queue, cmd);
 
 	printf("source select %s%c: ", switches[type-1], num);
 
@@ -368,7 +385,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 	cmd->response_func = avmute_response;
 
-	pjctl->queue = g_list_append(pjctl->queue, cmd);
+	insert_at_head(&pjctl->queue, cmd);
 
 	printf("%s mute %s: ", targets[type-1], argv[2]);
 
@@ -507,7 +524,7 @@ status(struct pjctl *pjctl, char **argv, int argc)
 			return -1;
 		if (asprintf(&cmd->command, "%%1%s ?\r", cmds[i].command) < 0)
 			return -1;
-		pjctl->queue = g_list_append(pjctl->queue, cmd);
+		insert_at_head(&pjctl->queue, cmd);
 	}
 
 	return 0;
@@ -545,6 +562,7 @@ main(int argc, char **argv)
 	int s, i;
 
 	memset(&pjctl, 0, sizeof pjctl);
+	pjctl.queue.next = pjctl.queue.prev = &pjctl.queue;
 
 	if (argc <= 2) {
 		usage(&pjctl);
@@ -559,7 +577,7 @@ main(int argc, char **argv)
 	}
 
 	/* Nothing got into queue? User gave invalid command. */
-	if (g_list_length(pjctl.queue) == 0) {
+	if (pjctl.queue.next == &pjctl.queue) {
 		fprintf(stderr, "error: invalid command\n");
 		usage(&pjctl);
 		return 1;
