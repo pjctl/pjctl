@@ -19,6 +19,7 @@
 
 #define _POSIX_C_SOURCE 1
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <glib.h>
@@ -69,16 +70,16 @@ handle_pjlink_error(char *param)
 
 		switch (param[3]) {
 		case '1':
-			g_printerr("error: Undefined command.\n");
+			printf("error: Undefined command.\n");
 			break;
 		case '2':
-			g_printerr("error: Out-of-parameter.\n");
+			printf("error: Out-of-parameter.\n");
 			break;
 		case '3':
-			g_printerr("error: Unavailable time.\n");
+			printf("error: Unavailable time.\n");
 			break;
 		case '4':
-			g_printerr("error: Projector failure.\n");
+			printf("error: Projector failure.\n");
 			break;
 		default:
 			return 0;
@@ -115,12 +116,12 @@ static int
 handle_setup(struct pjctl *pjctl, char *data, int len)
 {
 	if (data[PJLINK_PARAMETER] == '1') {
-		g_printerr("error: pjlink encryption is not implemented.\n");
+		fprintf(stderr, "error: pjlink encryption is not implemented.\n");
 		return -1;
 	}
 
 	if (data[PJLINK_PARAMETER] != '0') {
-		g_printerr("error: invalid setup message received.\n");
+		fprintf(stderr, "error: invalid setup message received.\n");
 		return -1;
 	}
 
@@ -135,35 +136,35 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 	struct queue_command *cmd;
 
 	if (len < 8 || len > PJLINK_TERMINATOR) {
-		g_printerr("error: invalid packet length: %d\n", len);
+		fprintf(stderr, "error: invalid packet length: %d\n", len);
 		return -1;
 	}
 
 	if (strncmp(data, "PJLINK ", 7) == 0) {
 		if (pjctl->state != PJCTL_AWAIT_INITIAL) {
-			g_printerr("error: got unexpected initial\n");
+			fprintf(stderr, "error: got unexpected initial\n");
 			return -1;
 		}
 		return handle_setup(pjctl, data, len);
 	}
 
 	if (pjctl->state != PJCTL_AWAIT_RESPONSE) {
-		g_printerr("error: got unexpected response.\n");
+		fprintf(stderr, "error: got unexpected response.\n");
 		return -1;
 	}
 
 	if (data[PJLINK_HEADER] != '%') {
-		g_printerr("invalid pjlink command received.\n");
+		fprintf(stderr, "invalid pjlink command received.\n");
 		return -1;
 	}
 
 	if (data[PJLINK_CLASS] != '1') {
-		g_printerr("unhandled pjlink class: %c\n", data[1]);
+		fprintf(stderr, "unhandled pjlink class: %c\n", data[1]);
 		return -1;
 	}
 
 	if (data[PJLINK_SEPERATOR] != '=') {
-		g_printerr("incorrect seperator in pjlink command\n");
+		fprintf(stderr, "incorrect seperator in pjlink command\n");
 		return -1;
 	}
 	data[PJLINK_SEPERATOR] = '\0';
@@ -197,7 +198,7 @@ read_cb(struct pjctl *pjctl)
 
 	end = memchr(data, 0x0d, ret);
 	if (end == NULL) {
-		g_printerr("invalid pjlink msg received\n");
+		fprintf(stderr, "invalid pjlink msg received\n");
 		exit(1);
 		return -1;
 	}
@@ -215,9 +216,9 @@ power_response(struct pjctl *pjctl, char *cmd, char *param)
 	int ret = handle_pjlink_error(param);
 
 	if (ret == 1)
-		g_print("OK\n");
+		printf("OK\n");
 	if (ret == 0)
-		g_print("power status: %s\n", param[0] == '1' ? "on" : "off" );
+		printf("power status: %s\n", param[0] == '1' ? "on" : "off" );
 }
 
 static int
@@ -238,7 +239,7 @@ power(struct pjctl *pjctl, char **argv, int argc)
 	else if (strcmp(argv[1], "off") == 0)
 		on = 0;
 	else {
-		g_printerr("invalid power parameter\n");
+		fprintf(stderr, "invalid power parameter\n");
 		return -1;
 	}
 
@@ -247,7 +248,7 @@ power(struct pjctl *pjctl, char **argv, int argc)
 
 	pjctl->queue = g_list_append(pjctl->queue, cmd);
 
-	g_print("power %s: ", argv[1]);
+	printf("power %s: ", argv[1]);
 
 	return 0;
 }
@@ -256,7 +257,7 @@ static void
 source_response(struct pjctl *pjctl, char *cmd, char *param)
 {
 	if (handle_pjlink_error(param) == 1)
-		g_print("OK\n");
+		printf("OK\n");
 }
 
 static int
@@ -273,7 +274,7 @@ source(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 
 	if (argc < 2) {
-		g_printerr("missing parameter to source commands\n");
+		fprintf(stderr, "missing parameter to source commands\n");
 		return -1;
 	}
 
@@ -286,13 +287,13 @@ source(struct pjctl *pjctl, char **argv, int argc)
 	}
 
 	if (type == 0) {
-		g_printerr("incorrect source type given\n");
+		fprintf(stderr, "incorrect source type given\n");
 		return -1;
 	}
 
 	num = argv[1][offset];
 	if (num < '1' || num > '9') {
-		g_printerr("warning: missing source number, defaulting to 1\n");
+		fprintf(stderr, "warning: missing source number, defaulting to 1\n");
 		num = '1';
 	}
 
@@ -301,7 +302,7 @@ source(struct pjctl *pjctl, char **argv, int argc)
 
 	pjctl->queue = g_list_append(pjctl->queue, cmd);
 
-	g_print("source select %s%c: ", switches[type-1], num);
+	printf("source select %s%c: ", switches[type-1], num);
 
 	return 0;
 }
@@ -314,9 +315,9 @@ avmute_response(struct pjctl *pjctl, char *cmd, char *param)
 	ret = handle_pjlink_error(param);
 
 	if (ret == 1) {
-		g_print("OK\n");
+		printf("OK\n");
 	} else if (ret == 0) {
-		g_print("avmute: %c%c\n", param[0], param[1]);
+		printf("avmute: %c%c\n", param[0], param[1]);
 	}
 }
 
@@ -334,7 +335,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 
 	if (argc < 3) {
-		g_printerr("missing parameter to source commands\n");
+		fprintf(stderr, "missing parameter to source commands\n");
 		return -1;
 	}
 
@@ -347,7 +348,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 	}
 
 	if (type == 0) {
-		g_printerr("incorrect source type given\n");
+		fprintf(stderr, "incorrect source type given\n");
 		return -1;
 	}
 
@@ -356,7 +357,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 	else if (strcmp(argv[2], "off") == 0)
 		on = 0;
 	else {
-		g_printerr("invalid mute parameter\n");
+		fprintf(stderr, "invalid mute parameter\n");
 		return -1;
 	}
 
@@ -365,7 +366,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 
 	pjctl->queue = g_list_append(pjctl->queue, cmd);
 
-	g_print("%s mute %s: ", targets[type-1], argv[2]);
+	printf("%s mute %s: ", targets[type-1], argv[2]);
 
 	return 0;
 }
@@ -376,32 +377,32 @@ name_response(struct pjctl *pjctl, char *cmd, char *param)
 	if (!strlen(param))
 		return;
 
-	g_print("name: ");
+	printf("name: ");
 	if (handle_pjlink_error(param) < 0)
 		return;
 
-	g_print("%s\n", param);
+	printf("%s\n", param);
 }
 
 static void
 manufactor_name_response(struct pjctl *pjctl, char *cmd, char *param)
 {
 	if (strlen(param))
-		g_print("manufactor name: %s\n", param);
+		printf("manufactor name: %s\n", param);
 }
 
 static void
 product_name_response(struct pjctl *pjctl, char *cmd, char *param)
 {
 	if (strlen(param))
-		g_print("product name: %s\n", param);
+		printf("product name: %s\n", param);
 }
 
 static void
 info_response(struct pjctl *pjctl, char *cmd, char *param)
 {
 	if (strlen(param))
-		g_print("model info: %s\n", param);
+		printf("model info: %s\n", param);
 }
 
 static const char *
@@ -429,16 +430,16 @@ input_switch_response(struct pjctl *pjctl, char *cmd, char *param)
 	if (!strlen(param))
 		return;
 
-	g_print("current input: ");
+	printf("current input: ");
 
 	if (handle_pjlink_error(param) < 0)
 		return;
 
 	if (strlen(param) == 2)
-		g_print("%s%c\n",
+		printf("%s%c\n",
 			map_input_name(param[0]), param[1]);
 	else
-		g_print("error: invalid response\n");
+		printf("error: invalid response\n");
 }
 
 static void
@@ -450,30 +451,30 @@ input_list_response(struct pjctl *pjctl, char *cmd, char *param)
 	if (len % 3 != 2)
 		return;
 
-	g_print("available input sources:");
+	printf("available input sources:");
 
 	for (i = 0; i < len; i+=3)
-		g_print(" %s%c", map_input_name(param[i]), param[i+1]);
+		printf(" %s%c", map_input_name(param[i]), param[i+1]);
 
-	g_print("\n");
+	printf("\n");
 }
 
 static void
 lamp_response(struct pjctl *pjctl, char *cmd, char *param)
 {
-	g_print("lamp response: %s\n", param);
+	printf("lamp response: %s\n", param);
 }
 
 static void
 error_status_response(struct pjctl *pjctl, char *cmd, char *param)
 {
-	g_print("error status response: %s\n", param);
+	printf("error status response: %s\n", param);
 }
 
 static void
 class_response(struct pjctl *pjctl, char *cmd, char *param)
 {
-	g_print("class response: %s\n", param);
+	printf("class response: %s\n", param);
 }
 
 static int
@@ -523,10 +524,10 @@ usage(struct pjctl *pjctl)
 {
 	int i;
 
-	g_print("usage: pjctl <hostname> command [args..]\n\n");
-	g_print("commands:\n");
+	printf("usage: pjctl <hostname> command [args..]\n\n");
+	printf("commands:\n");
 	for (i = 0; i < G_N_ELEMENTS(commands); ++i)
-		g_print("  %s %s\n", commands[i].name, commands[i].help);
+		printf("  %s %s\n", commands[i].name, commands[i].help);
 }
 
 int
@@ -554,7 +555,7 @@ main(int argc, char **argv)
 
 	/* Nothing got into queue? User gave invalid command. */
 	if (g_list_length(pjctl.queue) == 0) {
-		g_printerr("error: invalid command\n");
+		fprintf(stderr, "error: invalid command\n");
 		usage(&pjctl);
 		return 1;
 	}
@@ -565,7 +566,7 @@ main(int argc, char **argv)
 
 	s = getaddrinfo(host, sport, &hints, &result);
 	if (s != 0) {
-		g_printerr("getaddrinfo :%s\n", gai_strerror(s));
+		fprintf(stderr, "getaddrinfo :%s\n", gai_strerror(s));
 		return 1;
 	}
 
@@ -582,7 +583,7 @@ main(int argc, char **argv)
 	}
 	freeaddrinfo(result);
 	if (rp == NULL) {
-		g_printerr("Failed to connect: %m\n");
+		fprintf(stderr, "Failed to connect: %m\n");
 		return 1;
 	}
 
