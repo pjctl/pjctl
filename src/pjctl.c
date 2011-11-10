@@ -17,10 +17,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define _POSIX_C_SOURCE 1
+
 #include <stdlib.h>
 #include <string.h>
 #include <glib.h>
-#include <gio/gio.h>
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <netdb.h>
 
 enum pjlink_packet_offsets {
 	PJLINK_HEADER = 0,
@@ -33,19 +39,15 @@ enum pjlink_packet_offsets {
 
 enum pjctl_state {
 	PJCTL_AWAIT_INITIAL,
-	PJCTL_AWAIT_RESPONSE
+	PJCTL_AWAIT_RESPONSE,
+	PJCTL_FINISH
 };
 
 struct pjctl {
 	enum pjctl_state state;
 	GList *queue;
 
-	GMainLoop *loop;
-
-	GSocketClient *sc;
-	GSocketConnection *con;
-	GPollableInputStream *in;
-	GOutputStream *out;
+	int fd;
 };
 
 struct queue_command {
@@ -91,26 +93,18 @@ handle_pjlink_error(char *param)
 static int
 send_next_cmd(struct pjctl *pjctl)
 {
-	GError *error = NULL; 
 	gssize ret;
 	struct queue_command *cmd;
 
 	/* Are we're ready? */
 	if (g_list_length(pjctl->queue) == 0) {
-		g_main_loop_quit(pjctl->loop);
+		pjctl->state = PJCTL_FINISH;
 		return 0;
 	}
 
 	cmd = g_list_nth_data(pjctl->queue, 0);
 
-	ret = g_output_stream_write(pjctl->out, cmd->command,
-				    strlen(cmd->command), NULL, &error);
-	if (ret == -1) {
-		g_printerr("error: write failed: %s\n",
-			   error ? error->message : "unknown reason");
-		g_main_loop_quit(pjctl->loop);
-		return -1;
-	}
+	ret = send(pjctl->fd, cmd->command, strlen(cmd->command), 0);
 
 	pjctl->state = PJCTL_AWAIT_RESPONSE;
 
@@ -122,21 +116,17 @@ handle_setup(struct pjctl *pjctl, char *data, int len)
 {
 	if (data[PJLINK_PARAMETER] == '1') {
 		g_printerr("error: pjlink encryption is not implemented.\n");
-		goto quit;
+		return -1;
 	}
 
 	if (data[PJLINK_PARAMETER] != '0') {
 		g_printerr("error: invalid setup message received.\n");
-		goto quit;
+		return -1;
 	}
 
 	send_next_cmd(pjctl);
 
 	return 0;
-quit:
-	g_main_loop_quit(pjctl->loop);
-
-	return -1;
 }
 
 static int
@@ -146,35 +136,35 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 
 	if (len < 8 || len > PJLINK_TERMINATOR) {
 		g_printerr("error: invalid packet length: %d\n", len);
-		goto quit;
+		return -1;
 	}
 
 	if (strncmp(data, "PJLINK ", 7) == 0) {
 		if (pjctl->state != PJCTL_AWAIT_INITIAL) {
 			g_printerr("error: got unexpected initial\n");
-			goto quit;
+			return -1;
 		}
 		return handle_setup(pjctl, data, len);
 	}
 
 	if (pjctl->state != PJCTL_AWAIT_RESPONSE) {
 		g_printerr("error: got unexpected response.\n");
-		goto quit;
+		return -1;
 	}
 
 	if (data[PJLINK_HEADER] != '%') {
 		g_printerr("invalid pjlink command received.\n");
-		goto quit;
+		return -1;
 	}
 
 	if (data[PJLINK_CLASS] != '1') {
 		g_printerr("unhandled pjlink class: %c\n", data[1]);
-		goto quit;
+		return -1;
 	}
 
 	if (data[PJLINK_SEPERATOR] != '=') {
 		g_printerr("incorrect seperator in pjlink command\n");
-		goto quit;
+		return -1;
 	}
 	data[PJLINK_SEPERATOR] = '\0';
 
@@ -191,59 +181,32 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 	send_next_cmd(pjctl);
 
 	return 0;
-
-quit:
-	g_main_loop_quit(pjctl->loop);
-
-	return -1;
 }
 
-static gboolean
-read_cb(GObject *pollable_stream, gpointer userdata)
+static int
+read_cb(struct pjctl *pjctl)
 {
-	struct pjctl *pjctl = userdata;
-	gssize ret;
 	char data[136];
+	ssize_t ret;
 	char *end;
-	GError *error = NULL;
 
-	do {
-		ret = g_pollable_input_stream_read_nonblocking(pjctl->in,
-							       data,
-							       sizeof data,
-							       NULL, &error);
+	ret = recv(pjctl->fd, data, sizeof data, 0);
+	if (ret <= 0) {
+		exit(1);
+	}
 
-		if (ret <= 0) {
-			if (g_error_matches(error, G_IO_ERROR,
-					    G_IO_ERROR_WOULD_BLOCK))
-				break;
+	end = memchr(data, 0x0d, ret);
+	if (end == NULL) {
+		g_printerr("invalid pjlink msg received\n");
+		exit(1);
+		return -1;
+	}
 
+	*end = '\0';
+	if (handle_data(pjctl, data, (ptrdiff_t) (end - data)) < 0)
+		return -1;
 
-			if (ret == 0 && error == NULL) {
-				g_main_loop_quit(pjctl->loop);
-				break;
-			}
-
-			g_printerr("read failed: %ld: %d %s\n", ret,
-				   error ? error->code : -1,
-				   error ? error->message: "unknown");
-
-			break;
-		}
-
-		end = memchr(data, 0x0d, ret);
-		if (end == NULL) {
-			g_printerr("invalid pjlink msg received\n");
-			g_main_loop_quit(pjctl->loop);
-			return 0;
-		}
-
-		*end = '\0';
-		if (handle_data(pjctl, data, (ptrdiff_t) (end - data)) < 0)
-			break;
-	} while (g_pollable_input_stream_is_readable(pjctl->in));
-
-	return TRUE;
+	return 0;
 }
 
 static void
@@ -571,15 +534,11 @@ main(int argc, char **argv)
 {
 	struct pjctl pjctl;
 	char *host = argv[1];
-	int port = 4352;
-	GError *error = NULL;
-	int i;
-	GSource *src;
-	guint src_id;
+	char *sport = "4352";
+	struct addrinfo hints, *result, *rp;
+	int s, i;
 
 	memset(&pjctl, 0, sizeof pjctl);
-
-	g_type_init();
 
 	if (argc <= 2) {
 		usage(&pjctl);
@@ -600,45 +559,41 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	pjctl.loop = g_main_loop_new(NULL, FALSE);
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
 
-	pjctl.sc = g_socket_client_new();
-	g_socket_client_set_family(pjctl.sc, G_SOCKET_FAMILY_IPV4);
-	g_socket_client_set_protocol(pjctl.sc, G_SOCKET_PROTOCOL_TCP);
-	g_socket_client_set_socket_type(pjctl.sc, G_SOCKET_TYPE_STREAM);
-
-	pjctl.con = g_socket_client_connect_to_host(pjctl.sc, host, port,
-						    NULL, &error);
-	if (error) {
-		g_printerr("failed to connect: %s\n", error->message);
+	s = getaddrinfo(host, sport, &hints, &result);
+	if (s != 0) {
+		g_printerr("getaddrinfo :%s\n", gai_strerror(s));
 		return 1;
 	}
 
-	g_object_get(G_OBJECT(pjctl.con),
-		     "input-stream", &pjctl.in,
-		     "output-stream", &pjctl.out, NULL);
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		pjctl.fd = socket(rp->ai_family, rp->ai_socktype,
+				  rp->ai_protocol);
+		if (pjctl.fd == -1)
+			continue;
 
-	if (!G_IS_POLLABLE_INPUT_STREAM(pjctl.in) ||
-	    !g_pollable_input_stream_can_poll(pjctl.in)) {
-		g_printerr("Error: GSocketConnection is not pollable\n");
+		if (connect(pjctl.fd, rp->ai_addr, rp->ai_addrlen) == 0)
+			break;
+
+		close(pjctl.fd);
+	}
+	freeaddrinfo(result);
+	if (rp == NULL) {
+		g_printerr("Failed to connect: %m\n");
 		return 1;
 	}
-
-	src = g_pollable_input_stream_create_source(pjctl.in, NULL);
-	g_source_set_callback(src, (GSourceFunc) read_cb, &pjctl, NULL);
-	src_id = g_source_attach(src, NULL);
-	g_source_unref(src);
 
 	pjctl.state = PJCTL_AWAIT_INITIAL;
 
-	g_main_loop_run(pjctl.loop);
-
-	g_source_remove(src_id);
-	g_object_unref(pjctl.in);
-	g_object_unref(pjctl.out);
-	g_object_unref(pjctl.con);
-	g_object_unref(pjctl.sc);
-	g_main_loop_unref(pjctl.loop);
+	while (pjctl.state != PJCTL_FINISH) {
+		if (read_cb(&pjctl) < 0)
+			return 1;
+	}
+	
+	close(pjctl.fd);
 
 	return 0;
 }
