@@ -49,7 +49,8 @@ struct pjctl;
 
 struct queue_command {
 	char *command;
-	void (*response_func)(struct pjctl *pjctl, struct queue_command *cmd, char *op, char *param);
+	void (*response_func)(struct pjctl *pjctl, struct queue_command *cmd,
+			      char *op, char *param);
 	char *prefix;
 	struct queue_command *prev, *next;
 };
@@ -137,7 +138,8 @@ static int
 handle_setup(struct pjctl *pjctl, char *data, int len)
 {
 	if (data[PJLINK_PARAMETER] == '1') {
-		fprintf(stderr, "error: pjlink encryption is not implemented.\n");
+		fprintf(stderr,
+			"error: pjlink encryption is not implemented.\n");
 		return -1;
 	}
 
@@ -322,7 +324,8 @@ source(struct pjctl *pjctl, char **argv, int argc)
 
 	num = argv[1][offset];
 	if (num < '1' || num > '9') {
-		fprintf(stderr, "warning: missing source number, defaulting to 1\n");
+		fprintf(stderr,
+			"warning: missing source number, defaulting to 1\n");
 		num = '1';
 	}
 
