@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <glib.h>
+#include <stddef.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -58,6 +58,8 @@ struct pjctl {
 	struct queue_command queue;
 	int fd;
 };
+
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 
 #define remove_from_list(elem) \
 	do {						\
@@ -112,7 +114,7 @@ handle_pjlink_error(char *param)
 static int
 send_next_cmd(struct pjctl *pjctl)
 {
-	gssize ret;
+	ssize_t ret;
 	struct queue_command *cmd;
 
 	/* Are we're ready? */
@@ -195,7 +197,7 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 			   &data[PJLINK_PARAMETER]);
 
 	free(cmd->command);
-	g_free(cmd);
+	free(cmd);
 
 	send_next_cmd(pjctl);
 
@@ -297,7 +299,7 @@ source(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 	}
 
-	for (i = 0; i < G_N_ELEMENTS(switches); ++i) {
+	for (i = 0; i < ARRAY_SIZE(switches); ++i) {
 		offset = strlen(switches[i]);
 		if (strncmp(argv[1], switches[i], offset) == 0) {
 			type = i+1;
@@ -359,7 +361,7 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 	}
 
-	for (i = 0; i < G_N_ELEMENTS(targets); ++i) {
+	for (i = 0; i < ARRAY_SIZE(targets); ++i) {
 		int len = strlen(targets[i]);
 		if (strncmp(argv[1], targets[i], len) == 0) {
 			type = i+1;
@@ -518,10 +520,11 @@ status(struct pjctl *pjctl, char **argv, int argc)
 	struct queue_command *cmd;
 	int i;
 
-	for (i = 0; i < G_N_ELEMENTS(cmds); ++i) {
-		cmd = g_memdup(&cmds[i], sizeof *cmd);
+	for (i = 0; i < ARRAY_SIZE(cmds); ++i) {
+		cmd = malloc(sizeof *cmd);
 		if (!cmd)
 			return -1;
+		memcpy(cmd, &cmds[i], sizeof *cmd);
 		if (asprintf(&cmd->command, "%%1%s ?\r", cmds[i].command) < 0)
 			return -1;
 		insert_at_head(&pjctl->queue, cmd);
@@ -548,7 +551,7 @@ usage(struct pjctl *pjctl)
 
 	printf("usage: pjctl <hostname> command [args..]\n\n");
 	printf("commands:\n");
-	for (i = 0; i < G_N_ELEMENTS(commands); ++i)
+	for (i = 0; i < ARRAY_SIZE(commands); ++i)
 		printf("  %s %s\n", commands[i].name, commands[i].help);
 }
 
@@ -569,7 +572,7 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	for (i = 0; i < G_N_ELEMENTS(commands); ++i) {
+	for (i = 0; i < ARRAY_SIZE(commands); ++i) {
 		if (strcmp(argv[2], commands[i].name) == 0) {
 			if (commands[i].func(&pjctl, &argv[2], argc-2) < 0)
 				return 1;
