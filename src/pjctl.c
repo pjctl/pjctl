@@ -49,7 +49,8 @@ struct pjctl;
 
 struct queue_command {
 	char *command;
-	void (*response_func)(struct pjctl *pjctl, char *cmd, char *param);
+	void (*response_func)(struct pjctl *pjctl, struct queue_command *cmd, char *op, char *param);
+	char *prefix;
 	struct queue_command *prev, *next;
 };
 
@@ -193,7 +194,7 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 
 	remove_from_list(cmd);
 
-	cmd->response_func(pjctl, &data[PJLINK_COMMAND],
+	cmd->response_func(pjctl, cmd, &data[PJLINK_COMMAND],
 			   &data[PJLINK_PARAMETER]);
 
 	free(cmd->command);
@@ -231,14 +232,20 @@ read_cb(struct pjctl *pjctl)
 }
 
 static void
-power_response(struct pjctl *pjctl, char *cmd, char *param)
+power_response(struct pjctl *pjctl, struct queue_command *cmd,
+	       char *op, char *param)
 {
-	int ret = handle_pjlink_error(param);
+	int ret;
+
+	fputs(cmd->prefix, stdout);
+	free(cmd->prefix);
+
+	ret = handle_pjlink_error(param);
 
 	if (ret == 1)
 		printf("OK\n");
-	if (ret == 0)
-		printf("power status: %s\n", param[0] == '1' ? "on" : "off" );
+	else if (ret == 0)
+		printf("%s\n", param[0] == '1' ? "on" : "off" );
 }
 
 static int
@@ -266,16 +273,17 @@ power(struct pjctl *pjctl, char **argv, int argc)
 	if (asprintf(&cmd->command, "%%1POWR %c\r", on ? '1' : '0') < 0)
 		return -1;
 	cmd->response_func = power_response;
+	if (asprintf(&cmd->prefix, "power %s: ", argv[1]) < 0)
+		return -1;
 
 	insert_at_head(&pjctl->queue, cmd);
-
-	printf("power %s: ", argv[1]);
 
 	return 0;
 }
 
 static void
-source_response(struct pjctl *pjctl, char *cmd, char *param)
+source_response(struct pjctl *pjctl, struct queue_command *cmd,
+		char *op, char *param)
 {
 	if (handle_pjlink_error(param) == 1)
 		printf("OK\n");
@@ -330,16 +338,20 @@ source(struct pjctl *pjctl, char **argv, int argc)
 }
 
 static void
-avmute_response(struct pjctl *pjctl, char *cmd, char *param)
+avmute_response(struct pjctl *pjctl, struct queue_command *cmd,
+		char *op, char *param)
 {
 	int ret;
+
+	fputs(cmd->prefix, stdout);
+	free(cmd->prefix);
 
 	ret = handle_pjlink_error(param);
 
 	if (ret == 1) {
 		printf("OK\n");
 	} else if (ret == 0) {
-		printf("avmute: %c%c\n", param[0], param[1]);
+		printf("%c%c\n", param[0], param[1]);
 	}
 }
 
@@ -386,16 +398,17 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 	if (asprintf(&cmd->command, "%%1AVMT %d%d\r", type, on) < 0)
 		return -1;
 	cmd->response_func = avmute_response;
-
+	if (asprintf(&cmd->prefix, "%s mute %s: ",
+		     targets[type-1], argv[2]) < 0)
+		return -1;
 	insert_at_head(&pjctl->queue, cmd);
-
-	printf("%s mute %s: ", targets[type-1], argv[2]);
 
 	return 0;
 }
 
 static void
-name_response(struct pjctl *pjctl, char *cmd, char *param)
+name_response(struct pjctl *pjctl, struct queue_command *cmd,
+	      char *op, char *param)
 {
 	if (!strlen(param))
 		return;
@@ -408,21 +421,24 @@ name_response(struct pjctl *pjctl, char *cmd, char *param)
 }
 
 static void
-manufactor_name_response(struct pjctl *pjctl, char *cmd, char *param)
+manufactor_name_response(struct pjctl *pjctl, struct queue_command *cmd,
+			 char *op, char *param)
 {
 	if (strlen(param))
 		printf("manufactor name: %s\n", param);
 }
 
 static void
-product_name_response(struct pjctl *pjctl, char *cmd, char *param)
+product_name_response(struct pjctl *pjctl, struct queue_command *cmd,
+		      char *op, char *param)
 {
 	if (strlen(param))
 		printf("product name: %s\n", param);
 }
 
 static void
-info_response(struct pjctl *pjctl, char *cmd, char *param)
+info_response(struct pjctl *pjctl, struct queue_command *cmd,
+	      char *op, char *param)
 {
 	if (strlen(param))
 		printf("model info: %s\n", param);
@@ -448,7 +464,8 @@ map_input_name(char sw)
 }
 
 static void
-input_switch_response(struct pjctl *pjctl, char *cmd, char *param)
+input_switch_response(struct pjctl *pjctl, struct queue_command *cmd,
+		      char *op, char *param)
 {
 	if (!strlen(param))
 		return;
@@ -466,7 +483,8 @@ input_switch_response(struct pjctl *pjctl, char *cmd, char *param)
 }
 
 static void
-input_list_response(struct pjctl *pjctl, char *cmd, char *param)
+input_list_response(struct pjctl *pjctl, struct queue_command *cmd,
+		    char *op, char *param)
 {
 	int i;
 	int len = strlen(param);
@@ -483,19 +501,22 @@ input_list_response(struct pjctl *pjctl, char *cmd, char *param)
 }
 
 static void
-lamp_response(struct pjctl *pjctl, char *cmd, char *param)
+lamp_response(struct pjctl *pjctl, struct queue_command *cmd,
+	      char *op, char *param)
 {
 	printf("lamp response: %s\n", param);
 }
 
 static void
-error_status_response(struct pjctl *pjctl, char *cmd, char *param)
+error_status_response(struct pjctl *pjctl, struct queue_command *cmd,
+		      char *op, char *param)
 {
 	printf("error status response: %s\n", param);
 }
 
 static void
-class_response(struct pjctl *pjctl, char *cmd, char *param)
+class_response(struct pjctl *pjctl, struct queue_command *cmd,
+	       char *op, char *param)
 {
 	printf("class response: %s\n", param);
 }
@@ -509,10 +530,10 @@ status(struct pjctl *pjctl, char **argv, int argc)
 		{ "INF1", manufactor_name_response },
 		{ "INF2", product_name_response },
 		{ "INFO", info_response },
-		{ "POWR", power_response },
+		{ "POWR", power_response, "power status: " },
 		{ "INPT", input_switch_response },
 		{ "INST", input_list_response },
-		{ "AVMT", avmute_response },
+		{ "AVMT", avmute_response, "avmute: " },
 		{ "LAMP", lamp_response },
 		{ "ERST", error_status_response },
 		{ "CLSS", class_response }
@@ -521,12 +542,14 @@ status(struct pjctl *pjctl, char **argv, int argc)
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(cmds); ++i) {
-		cmd = malloc(sizeof *cmd);
+		cmd = calloc(1, sizeof *cmd);
 		if (!cmd)
 			return -1;
 		memcpy(cmd, &cmds[i], sizeof *cmd);
 		if (asprintf(&cmd->command, "%%1%s ?\r", cmds[i].command) < 0)
 			return -1;
+		if (cmds[i].prefix)
+			cmd->prefix = strdup(cmds[i].prefix);
 		insert_at_head(&pjctl->queue, cmd);
 	}
 
