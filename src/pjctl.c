@@ -18,6 +18,7 @@
  */
 
 #define _POSIX_C_SOURCE 1
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -176,7 +177,7 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 	cmd->response_func(pjctl, &data[PJLINK_COMMAND],
 			   &data[PJLINK_PARAMETER]);
 
-	g_free(cmd->command);
+	free(cmd->command);
 	g_free(cmd);
 
 	send_next_cmd(pjctl);
@@ -243,7 +244,8 @@ power(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 	}
 
-	cmd->command = g_strdup_printf("%%1POWR %c\r", on ? '1' : '0');
+	if (asprintf(&cmd->command, "%%1POWR %c\r", on ? '1' : '0') < 0)
+		return -1;
 	cmd->response_func = power_response;
 
 	pjctl->queue = g_list_append(pjctl->queue, cmd);
@@ -297,7 +299,8 @@ source(struct pjctl *pjctl, char **argv, int argc)
 		num = '1';
 	}
 
-	cmd->command = g_strdup_printf("%%1INPT %d%c\r", type, num);
+	if (asprintf(&cmd->command, "%%1INPT %d%c\r", type, num) < 0)
+		return -1;
 	cmd->response_func = source_response;
 
 	pjctl->queue = g_list_append(pjctl->queue, cmd);
@@ -361,7 +364,8 @@ avmute(struct pjctl *pjctl, char **argv, int argc)
 		return -1;
 	}
 
-	cmd->command = g_strdup_printf("%%1AVMT %d%d\r", type, on);
+	if (asprintf(&cmd->command, "%%1AVMT %d%d\r", type, on) < 0)
+		return -1;
 	cmd->response_func = avmute_response;
 
 	pjctl->queue = g_list_append(pjctl->queue, cmd);
@@ -501,7 +505,8 @@ status(struct pjctl *pjctl, char **argv, int argc)
 		cmd = g_memdup(&cmds[i], sizeof *cmd);
 		if (!cmd)
 			return -1;
-		cmd->command = g_strdup_printf("%%1%s ?\r", cmd->command);
+		if (asprintf(&cmd->command, "%%1%s ?\r", cmds[i].command) < 0)
+			return -1;
 		pjctl->queue = g_list_append(pjctl->queue, cmd);
 	}
 
