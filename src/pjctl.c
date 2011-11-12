@@ -522,21 +522,21 @@ static void
 lamp_response(struct pjctl *pjctl, struct queue_command *cmd,
 	      char *op, char *param)
 {
-	printf("lamp response: %s\n", param);
+	printf("lamp: %s\n", param);
 }
 
 static void
 error_status_response(struct pjctl *pjctl, struct queue_command *cmd,
 		      char *op, char *param)
 {
-	printf("error status response: %s\n", param);
+	printf("error status: %s\n", param);
 }
 
 static void
 class_response(struct pjctl *pjctl, struct queue_command *cmd,
 	       char *op, char *param)
 {
-	printf("class response: %s\n", param);
+	printf("available classes: %s\n", param);
 }
 
 static int
