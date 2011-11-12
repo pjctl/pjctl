@@ -16,7 +16,8 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 # Check for programs
 AC_PROG_CC
 
-#PKG_PROG_PKG_CONFIG()
+PKG_PROG_PKG_CONFIG()
+PKG_CHECK_MODULES(crypto, [libcrypto])
 
 if test "x$GCC" = "xyes"; then
 	GCC_CFLAGS="-Wall -g -Wstrict-prototypes -Wmissing-prototypes -fvisibility=hidden"

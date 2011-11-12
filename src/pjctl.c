@@ -17,7 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _POSIX_C_SOURCE 1
+#define _POSIX_C_SOURCE 2
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -29,6 +29,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <netdb.h>
+
+#include <openssl/md5.h>
 
 enum pjlink_packet_offsets {
 	PJLINK_HEADER = 0,
@@ -42,6 +44,7 @@ enum pjlink_packet_offsets {
 enum pjctl_state {
 	PJCTL_AWAIT_INITIAL,
 	PJCTL_AWAIT_RESPONSE,
+	PJCTL_AWAIT_RESPONSE_OR_AUTH_ERR,
 	PJCTL_FINISH
 };
 
@@ -59,6 +62,10 @@ struct pjctl {
 	enum pjctl_state state;
 	struct queue_command queue;
 	int fd;
+
+	char *password;
+	int need_hash;
+	char hash[32+1]; /* 0-terminated hex as ascii encoded 16 byte hash */
 };
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
@@ -113,11 +120,33 @@ handle_pjlink_error(char *param)
 	return 0;
 }
 
+static void
+init_hash(struct pjctl *pjctl, const char *salt)
+{
+	unsigned char md[MD5_DIGEST_LENGTH];
+	MD5_CTX md5;
+
+	MD5_Init(&md5);
+	MD5_Update(&md5, salt, strlen(salt));
+	MD5_Update(&md5, pjctl->password, strlen(pjctl->password));
+	MD5_Final(md, &md5);
+
+	snprintf(pjctl->hash, sizeof(pjctl->hash),
+		 "%02x%02x%02x%02x%02x%02x%02x%02x"
+		 "%02x%02x%02x%02x%02x%02x%02x%02x",
+		 md[ 0], md[ 1], md[ 2], md[ 3],
+		 md[ 4], md[ 5], md[ 6], md[ 7],
+		 md[ 8], md[ 9], md[10], md[11],
+		 md[12], md[13], md[14], md[15]);
+	pjctl->need_hash = 1;
+}
+
 static int
 send_next_cmd(struct pjctl *pjctl)
 {
-	ssize_t ret;
 	struct queue_command *cmd;
+	struct msghdr msg;
+	struct iovec iov[2];
 
 	/* Are we're ready? */
 	if (pjctl->queue.next == &pjctl->queue) {
@@ -125,11 +154,28 @@ send_next_cmd(struct pjctl *pjctl)
 		return 0;
 	}
 
-	cmd = pjctl->queue.prev;
-
-	ret = send(pjctl->fd, cmd->command, strlen(cmd->command), 0);
-
 	pjctl->state = PJCTL_AWAIT_RESPONSE;
+
+	memset(&msg, 0, sizeof msg);
+	msg.msg_iov = iov;
+
+	if (pjctl->need_hash) {
+		pjctl->state = PJCTL_AWAIT_RESPONSE_OR_AUTH_ERR;
+
+		iov[msg.msg_iovlen].iov_base = pjctl->hash;
+		iov[msg.msg_iovlen].iov_len = 32;
+		msg.msg_iovlen++;
+	}
+
+	cmd = pjctl->queue.prev;
+	iov[msg.msg_iovlen].iov_base = cmd->command;
+	iov[msg.msg_iovlen].iov_len = strlen(cmd->command);
+	msg.msg_iovlen++;
+
+	if (sendmsg(pjctl->fd, &msg, 0) < 0) {
+		fprintf(stderr, "sendmsg failed: %m\n");
+		return -1;
+	}
 
 	return 0;
 }
@@ -137,20 +183,36 @@ send_next_cmd(struct pjctl *pjctl)
 static int
 handle_setup(struct pjctl *pjctl, char *data, int len)
 {
-	if (data[PJLINK_PARAMETER] == '1') {
-		fprintf(stderr,
-			"error: pjlink encryption is not implemented.\n");
-		return -1;
-	}
-
-	if (data[PJLINK_PARAMETER] != '0') {
-		fprintf(stderr, "error: invalid setup message received.\n");
-		return -1;
+	switch (data[PJLINK_PARAMETER]) {
+	case '1':
+		if (pjctl->password == NULL) {
+			fprintf(stderr,
+				"Authentication required, password needed\n");
+			return -1;
+		}
+		if (strlen(&data[PJLINK_PARAMETER]) < 3)
+			goto err;
+		init_hash(pjctl, &data[PJLINK_PARAMETER+2]);
+		break;
+	case '0':
+		/* No authentication */
+		break;
+	case 'E':
+		if (strcmp(&data[PJLINK_PARAMETER], "ERRA") == 0) {
+			fprintf(stderr, "Authentication failed.\n");
+			return -1;
+		}
+		/* FALLTHROUGH */
+	default:
+		goto err;
 	}
 
 	send_next_cmd(pjctl);
 
 	return 0;
+err:
+	fprintf(stderr, "error: invalid setup message received.\n");
+	return -1;
 }
 
 static int
@@ -164,14 +226,22 @@ handle_data(struct pjctl *pjctl, char *data, int len)
 	}
 
 	if (strncmp(data, "PJLINK ", 7) == 0) {
-		if (pjctl->state != PJCTL_AWAIT_INITIAL) {
+		switch (pjctl->state) {
+		case PJCTL_AWAIT_INITIAL:
+		case PJCTL_AWAIT_RESPONSE_OR_AUTH_ERR:
+			break;
+		default:
 			fprintf(stderr, "error: got unexpected initial\n");
 			return -1;
 		}
 		return handle_setup(pjctl, data, len);
 	}
 
-	if (pjctl->state != PJCTL_AWAIT_RESPONSE) {
+	switch (pjctl->state) {
+	case PJCTL_AWAIT_RESPONSE:
+	case PJCTL_AWAIT_RESPONSE_OR_AUTH_ERR:
+		break;
+	default:
 		fprintf(stderr, "error: got unexpected response.\n");
 		return -1;
 	}
@@ -590,7 +660,7 @@ usage(struct pjctl *pjctl)
 {
 	int i;
 
-	printf("usage: pjctl <hostname> command [args..]\n\n");
+	printf("usage: pjctl [-p password] <hostname> command [args..]\n\n");
 	printf("commands:\n");
 	for (i = 0; i < ARRAY_SIZE(commands); ++i)
 		printf("  %s %s\n", commands[i].name, commands[i].help);
@@ -600,22 +670,33 @@ int
 main(int argc, char **argv)
 {
 	struct pjctl pjctl;
-	char *host = argv[1];
+	char *host;
 	char *sport = "4352";
 	struct addrinfo hints, *result, *rp;
-	int s, i;
+	int s, i, c;
 
 	memset(&pjctl, 0, sizeof pjctl);
 	pjctl.queue.next = pjctl.queue.prev = &pjctl.queue;
 
-	if (argc <= 2) {
+	while ((c = getopt(argc, argv, "p:")) != -1) {
+		switch (c) {
+		case 'p':
+			pjctl.password = optarg;
+			break;
+		default:
+			return 1;
+		}
+	}
+
+	if (argc < optind+2) {
 		usage(&pjctl);
 		return 1;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(commands); ++i) {
-		if (strcmp(argv[2], commands[i].name) == 0) {
-			if (commands[i].func(&pjctl, &argv[2], argc-2) < 0)
+		if (strcmp(argv[optind+1], commands[i].name) == 0) {
+			if (commands[i].func(&pjctl, &argv[optind+1],
+					     argc-optind-1) < 0)
 				return 1;
 		}
 	}
@@ -631,6 +712,7 @@ main(int argc, char **argv)
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
+	host = argv[optind];
 	s = getaddrinfo(host, sport, &hints, &result);
 	if (s != 0) {
 		fprintf(stderr, "getaddrinfo :%s\n", gai_strerror(s));
