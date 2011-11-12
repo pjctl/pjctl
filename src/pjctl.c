@@ -354,7 +354,22 @@ avmute_response(struct pjctl *pjctl, struct queue_command *cmd,
 	if (ret == 1) {
 		printf("OK\n");
 	} else if (ret == 0) {
-		printf("%c%c\n", param[0], param[1]);
+		if (strlen(param) != 2)
+			return;
+		switch (param[0]) {
+		case '1':
+			printf("video");
+			break;
+		case '2':
+			printf("audio");
+			break;
+		case '3':
+			printf("video & audio");
+			break;
+		}
+		printf(" mute ");
+
+		printf("%s\n", param[1] == '1' ? "on" : "off");
 	}
 }
 
