@@ -298,7 +298,7 @@ source(struct pjctl *pjctl, char **argv, int argc)
 	int type = 0, offset;
 	int num;
 	int i;
-	const char *switches[] = { "rgb", "video", "digital", "usb", "net" };
+	const char *switches[] = { "rgb", "video", "digital", "storage", "net" };
 
 	cmd = calloc(1, sizeof *cmd);
 	if (!cmd)
@@ -460,7 +460,7 @@ map_input_name(char sw)
 	case '4':
 		return "storage";
 	case '5':
-		return "network";
+		return "net";
 	default:
 		return "unknown";
 	}
@@ -565,7 +565,7 @@ static struct pjctl_command {
 	char *help;
 } commands[] = {
 	{ "power", power, "<on|off>" },
-	{ "source", source, "<rgb|video|digital|usb|net>[1-9]" },
+	{ "source", source, "<rgb|video|digital|storage|net>[1-9]" },
 	{ "mute", avmute, "<video|audio|av> <on|off>" },
 	{ "status", status, ""},
 };
