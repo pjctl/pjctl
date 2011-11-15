@@ -601,7 +601,41 @@ static void
 error_status_response(struct pjctl *pjctl, struct queue_command *cmd,
 		      char *op, char *param)
 {
-	printf("error status: %s\n", param);
+	int i;
+	int none = 1;
+	const char *flags[] = {
+		"fan", "lamp", "temperature", "cover", "filter", "other"
+	};
+
+	printf("errors: ");
+	if (handle_pjlink_error(param) < 0)
+		return;
+
+	if (strlen(param) != 6) {
+		fprintf(stderr, "invalid message received\n");
+		return;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(flags); ++i) {
+		switch (param[i]) {
+		case '2':
+			printf("%s:error ", flags[i]);
+			none = 0;
+			break;
+		case '1':
+			printf("%s:warning ", flags[i]);
+			none = 0;
+			break;
+		case '0':
+			break;
+		default:
+			fprintf(stderr, "invalid message received\n");
+			return;
+		}
+	}
+	if (none)
+		fputs("none", stdout);
+	fputs("\n", stdout);
 }
 
 static void
