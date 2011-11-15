@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -175,7 +176,7 @@ send_next_cmd(struct pjctl *pjctl)
 	msg.msg_iovlen++;
 
 	if (sendmsg(pjctl->fd, &msg, 0) < 0) {
-		fprintf(stderr, "sendmsg failed: %m\n");
+		fprintf(stderr, "sendmsg failed: %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -768,7 +769,7 @@ main(int argc, char **argv)
 	}
 	freeaddrinfo(result);
 	if (rp == NULL) {
-		fprintf(stderr, "Failed to connect: %m\n");
+		fprintf(stderr, "Failed to connect: %s\n", strerror(errno));
 		return 1;
 	}
 
