@@ -73,6 +73,8 @@ struct pjctl {
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 
+#define MIN(a,b) ((a)<(b) ? (a) : (b))
+
 #define remove_from_list(elem) \
 	do {						\
 		(elem)->next->prev = (elem)->prev;	\
@@ -595,7 +597,52 @@ static void
 lamp_response(struct pjctl *pjctl, struct queue_command *cmd,
 	      char *op, char *param)
 {
-	printf("lamp: %s\n", param);
+	char *lamp_end, *lamp_on, *lamp_time = param;
+	int i, len = strlen(param);
+
+	printf("lamp: ");
+	if (handle_pjlink_error(param) < 0)
+		return;
+
+	for (i = 0; len; ++i) {
+		lamp_end = memchr(lamp_time, ' ', MIN(len, 5));
+		if (lamp_end == NULL)
+			goto invalid;
+
+		*lamp_end = '\0';
+		len -= lamp_end - lamp_time;
+		if (len < 2)
+			goto invalid;
+
+		switch (*(lamp_end + 1)) {
+		case '1':
+			lamp_on = "on";
+			break;
+		case '0':
+			lamp_on = "off";
+			break;
+		default:
+			goto invalid;
+		}
+
+		printf("lamp%d:%s cumulative lighting time: %s; ",
+		       i, lamp_on, lamp_time);
+
+		lamp_time = lamp_end + 2;
+		len -= 2;
+		if (strlen(lamp_time)) {
+			if (lamp_time[0] != ' ')
+				goto invalid;
+			lamp_time++;
+			len--;
+		}
+	}
+
+	printf("\n");
+	return;
+
+invalid:
+	printf("invalid message body: %s\n", param);
 }
 
 static void
