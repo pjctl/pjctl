@@ -1,0 +1,7 @@
+all: win/pjctl win/pjctl-no-console
+
+win/pjctl: src/pjctl.c
+	gcc -o $@ $< -DNO_CRYPTO
+
+win/pjctl-no-console: src/pjctl.c
+	gcc -o $@ $< -DNO_CRYPTO -mwindows

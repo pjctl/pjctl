@@ -1,0 +1,24 @@
+;----------------------------------------------------------------------------
+;
+;    MODULE NAME:   pjctl.ver
+;
+;        $Author:   USER "Benjamin Franzke"  $
+;      $Revision:   1  $
+;          $Date:   10 Oct 2007 17:25:32  $
+;
+;    DESCRIPTION:   pjctl msi.
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; ProductName = pjctl (PJLink Projector Control)
+; DESCRIPTION = Control a PJLink Projector
+; Installed   = WINDOWS_ALL
+; Guid.UpgradeCode = {B20CBBBC-B192-474D-B4C9-616FC9238F2B}
+; MsiName     = pjctl
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+;############################################################################
+VERSION : 1.0.0
+DATE    : 25 Feb 2003
+CHANGES : First cut.
+

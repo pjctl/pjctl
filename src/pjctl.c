@@ -33,7 +33,9 @@
 #include <unistd.h>
 #include <netdb.h>
 
+#ifndef NO_CRYPTO
 #include <openssl/md5.h>
+#endif
 
 enum pjlink_packet_offsets {
 	PJLINK_HEADER = 0,
@@ -67,8 +69,10 @@ struct pjctl {
 	int fd;
 
 	char *password;
+#ifndef NO_CRYPTO
 	int need_hash;
 	char hash[32+1]; /* 0-terminated hex as ascii encoded 16 byte hash */
+#endif
 };
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
@@ -125,6 +129,7 @@ handle_pjlink_error(char *param)
 	return 0;
 }
 
+#ifndef NO_CRYPTO
 static void
 init_hash(struct pjctl *pjctl, const char *salt)
 {
@@ -145,6 +150,7 @@ init_hash(struct pjctl *pjctl, const char *salt)
 		 md[12], md[13], md[14], md[15]);
 	pjctl->need_hash = 1;
 }
+#endif
 
 static int
 send_next_cmd(struct pjctl *pjctl)
@@ -164,6 +170,7 @@ send_next_cmd(struct pjctl *pjctl)
 	memset(&msg, 0, sizeof msg);
 	msg.msg_iov = iov;
 
+#ifndef NO_CRYPTO
 	if (pjctl->need_hash) {
 		pjctl->state = PJCTL_AWAIT_RESPONSE_OR_AUTH_ERR;
 
@@ -171,6 +178,7 @@ send_next_cmd(struct pjctl *pjctl)
 		iov[msg.msg_iovlen].iov_len = 32;
 		msg.msg_iovlen++;
 	}
+#endif
 
 	cmd = pjctl->queue.prev;
 	iov[msg.msg_iovlen].iov_base = cmd->command;
@@ -189,6 +197,7 @@ static int
 handle_setup(struct pjctl *pjctl, char *data, int len)
 {
 	switch (data[PJLINK_PARAMETER]) {
+#ifndef NO_CRYPTO
 	case '1':
 		if (pjctl->password == NULL) {
 			fprintf(stderr,
@@ -199,6 +208,7 @@ handle_setup(struct pjctl *pjctl, char *data, int len)
 			goto err;
 		init_hash(pjctl, &data[PJLINK_PARAMETER+2]);
 		break;
+#endif
 	case '0':
 		/* No authentication */
 		break;
