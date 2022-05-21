@@ -4,7 +4,7 @@ AC_INIT([pjctl],
         [1],
         [benjaminfranzke@googlemail.com],
         [pjctl],
-        [https://gitorious.org/pjctl/])
+        [https://github.com/pjctl/pjctl/])
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
