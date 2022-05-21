@@ -131,7 +131,7 @@ handle_pjlink_error(char *param)
 
 #ifndef NO_CRYPTO
 static int
-init_hash(struct pjctl *pjctl, const char *salt)
+calculate_hash(struct pjctl *pjctl, const char *salt)
 {
 
 	EVP_MD_CTX *mdctx = NULL;
@@ -238,7 +238,11 @@ handle_setup(struct pjctl *pjctl, char *data, int len)
 		}
 		if (strlen(&data[PJLINK_PARAMETER]) < 3)
 			goto err;
-		init_hash(pjctl, &data[PJLINK_PARAMETER+2]);
+		if (calculate_hash(pjctl, &data[PJLINK_PARAMETER+2]) != 0) {
+			fprintf(stderr,
+				"Failed to calculate md5sum\n");
+			return -1;
+		}
 		break;
 #endif
 	case '0':
