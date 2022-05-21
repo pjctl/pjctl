@@ -34,7 +34,7 @@
 #include <netdb.h>
 
 #ifndef NO_CRYPTO
-#include <openssl/md5.h>
+#include <openssl/evp.h>
 #endif
 
 enum pjlink_packet_offsets {
@@ -130,16 +130,46 @@ handle_pjlink_error(char *param)
 }
 
 #ifndef NO_CRYPTO
-static void
+static int
 init_hash(struct pjctl *pjctl, const char *salt)
 {
-	unsigned char md[MD5_DIGEST_LENGTH];
-	MD5_CTX md5;
 
-	MD5_Init(&md5);
-	MD5_Update(&md5, salt, strlen(salt));
-	MD5_Update(&md5, pjctl->password, strlen(pjctl->password));
-	MD5_Final(md, &md5);
+	EVP_MD_CTX *mdctx = NULL;
+	uint8_t md[EVP_MAX_MD_SIZE];
+	unsigned md_size;
+	int r;
+
+	mdctx = EVP_MD_CTX_new();
+	if (!mdctx) {
+		/* This function just calls OPENSSL_zalloc, so failure
+		 * here is almost certainly a failed allocation. */
+		return -ENOMEM;
+	}
+	r = EVP_DigestInit_ex(mdctx, EVP_md5(), NULL);
+	if (r == 0) {
+		EVP_MD_CTX_free(mdctx);
+		return -EIO;
+	}
+
+	r = EVP_DigestUpdate(mdctx, salt, strlen(salt));
+	if (r == 0) {
+		EVP_MD_CTX_free(mdctx);
+		return -EIO;
+	}
+
+	r = EVP_DigestUpdate(mdctx, pjctl->password, strlen(pjctl->password));
+	if (r == 0) {
+		EVP_MD_CTX_free(mdctx);
+		return -EIO;
+	}
+
+	r = EVP_DigestFinal_ex(mdctx, md, &md_size);
+	if (r == 0) {
+		EVP_MD_CTX_free(mdctx);
+		return -EIO;
+	}
+
+	EVP_MD_CTX_free(mdctx);
 
 	snprintf(pjctl->hash, sizeof(pjctl->hash),
 		 "%02x%02x%02x%02x%02x%02x%02x%02x"
@@ -149,6 +179,8 @@ init_hash(struct pjctl *pjctl, const char *salt)
 		 md[ 8], md[ 9], md[10], md[11],
 		 md[12], md[13], md[14], md[15]);
 	pjctl->need_hash = 1;
+
+	return 0;
 }
 #endif
 
